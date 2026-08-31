@@ -182,9 +182,34 @@ model SLARecord {
   startTime     DateTime    @default(now())
   endTime       DateTime?
   expectedEndTime DateTime
-  status        String      // "IN_PROGRESS", "COMPLETED", "BREACHED"
+  status        String      // "IN_PROGRESS", "COMPLETED", "BREACHED", "FAILED"
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+}
+
+// SIMULATED REAL-WORLD EXTERNAL SILOS
+model ExternalIdentityRegistry {
+  id        String   @id @default(uuid())
+  citizenId String   @unique // The Aadhaar/PAN equivalent
+  fullName  String
+  dob       DateTime
+  phone     String
+  isVerified Boolean @default(true)
+}
+
+model ExternalRevenueRecords {
+  id              String   @id @default(uuid())
+  citizenId       String   @unique
+  annualIncome    Int
+  taxPayerStatus  String   // "ACTIVE", "DEFAULT"
+  assessmentYear  String
+}
+
+model ExternalSkillRegistry {
+  id              String   @id @default(uuid())
+  citizenId       String   @unique
+  certifiedSkills String[] // Array of skills
+  lastCertifiedAt DateTime
 }
 
 model WorkflowStep {

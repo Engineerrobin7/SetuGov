@@ -201,6 +201,30 @@ async function main() {
 
   console.log("Created Scholarship Service and Workflow Template");
 
+  // 5. Seed External Department Silos with "Real" Master Data
+  await prisma.externalIdentityRegistry.createMany({
+    data: [
+      { citizenId: "MH12345", fullName: "Rahul Sharma", dob: new Date("2002-05-14"), phone: "9876543210" },
+      { citizenId: "DL99999", fullName: "Priya Verma", dob: new Date("1995-10-20"), phone: "9988776655" }
+    ]
+  });
+
+  await prisma.externalRevenueRecords.createMany({
+    data: [
+      { citizenId: "MH12345", annualIncome: 120000, taxPayerStatus: "ACTIVE", assessmentYear: "2025-26" },
+      { citizenId: "DL99999", annualIncome: 850000, taxPayerStatus: "ACTIVE", assessmentYear: "2025-26" }
+    ]
+  });
+
+  await prisma.externalSkillRegistry.createMany({
+    data: [
+      { citizenId: "MH12345", certifiedSkills: ["Python", "AWS", "Docker"], lastCertifiedAt: new Date() },
+      { citizenId: "DL99999", certifiedSkills: ["Project Management", "Agile"], lastCertifiedAt: new Date() }
+    ]
+  });
+
+  console.log("Seeded External Department Registries (Master Data)");
+
   console.log("Database seeding completed successfully!");
 }
 

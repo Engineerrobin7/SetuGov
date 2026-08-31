@@ -10,6 +10,7 @@ import morgan from "morgan";
 // Import Routers
 import mockDepartmentsRouter from "./mock-departments/departments.router";
 import { registerCitizen, login, getMe } from "./auth/auth.controller";
+import { authenticateJWT } from "./auth/auth.middleware";
 import applicationsRouter from "./api/applications.router";
 import servicesRouter from "./api/services.router";
 import officialRouter from "./api/official.router";
@@ -45,7 +46,7 @@ app.use("/mock", mockDepartmentsRouter);
 // Public Auth Endpoints
 app.post("/api/auth/register", registerCitizen);
 app.post("/api/auth/login", login);
-app.get("/api/auth/me", getMe);
+app.get("/api/auth/me", authenticateJWT, getMe);
 
 // Protected Core Modules
 app.use("/api/services", servicesRouter);

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { mockState } from "./state";
+import prisma from "../config/db";
 
 const router = Router();
 
@@ -7,28 +8,31 @@ const router = Router();
 const DEMO_LABEL = "Mock Department Systems / Demonstration Environment";
 
 // 1. Department A: Citizen / Identity Service
-// POST /mock/identity/verify
-// Schema: { citizen_id, full_name, dob }
-router.post("/identity/verify", (req: Request, res: Response) => {
-  console.log(`[Mock Dept A] Received identity verification request:`, req.body);
-  const { citizen_id, full_name, dob } = req.body;
+router.post("/identity/verify", async (req: Request, res: Response) => {
+  console.log(`[Mock Dept A] Dynamic Identity Check:`, req.body);
+  const { citizen_id, full_name } = req.body;
 
-  if (!citizen_id || !full_name || !dob) {
-    return res.status(400).json({
-      error: "Missing required fields in Identity System schema",
-      environment: DEMO_LABEL,
+  if (!citizen_id) return res.status(400).json({ error: "citizen_id required" });
+
+  // Query actual external identity registry
+  const record = await prisma.externalIdentityRegistry.findUnique({
+    where: { citizenId: citizen_id }
+  });
+
+  if (!record) {
+    return res.json({
+      verification_status: "UNVERIFIED",
+      match_report: { id_match: false, name_match: false },
     });
   }
 
-  // Fictional verification check
-  const idMatch = citizen_id === "MH12345";
-  const nameMatch = full_name.toLowerCase() === "rahul sharma";
+  const nameMatch = record.fullName.toLowerCase() === full_name.toLowerCase();
 
   return res.json({
     environment: DEMO_LABEL,
-    verification_status: idMatch && nameMatch ? "VERIFIED" : "UNVERIFIED",
+    verification_status: nameMatch ? "VERIFIED" : "UNVERIFIED",
     match_report: {
-      id_match: idMatch,
+      id_match: true,
       name_match: nameMatch,
       dob_match: true,
     },
@@ -37,64 +41,53 @@ router.post("/identity/verify", (req: Request, res: Response) => {
 });
 
 // 2. Department B: Income / Eligibility Verification
-// POST /mock/eligibility/check
-// Schema: { beneficiaryId, applicantName, eligible }
-router.post("/eligibility/check", (req: Request, res: Response) => {
-  console.log(`[Mock Dept B] Received eligibility request. Failed state = ${mockState.isDepartmentBFailed}`, req.body);
-  
+router.post("/eligibility/check", async (req: Request, res: Response) => {
   if (mockState.isDepartmentBFailed) {
-    console.log("[Mock Dept B] Simulating 503 Service Unavailable");
-    return res.status(503).json({
-      error: "Department system database socket timeout (Simulated Failure)",
-      environment: DEMO_LABEL,
-    });
+    return res.status(503).json({ error: "Service Unavailable" });
   }
 
-  const { beneficiaryId, applicantName } = req.body;
+  const { beneficiaryId } = req.body;
+  if (!beneficiaryId) return res.status(400).json({ error: "beneficiaryId required" });
 
-  if (!beneficiaryId || !applicantName) {
-    return res.status(400).json({
-      error: "Missing required fields in Eligibility System schema",
-      environment: DEMO_LABEL,
-    });
+  const record = await prisma.externalRevenueRecords.findUnique({
+    where: { citizenId: beneficiaryId }
+  });
+
+  if (!record) {
+    return res.json({ approved: false, result: { status: "INELIGIBLE" } });
   }
-
-  const isEligible = beneficiaryId === "MH12345" && applicantName.toLowerCase() === "rahul sharma";
 
   return res.json({
     environment: DEMO_LABEL,
     eligibilityChecked: true,
     result: {
-      status: isEligible ? "ELIGIBLE" : "INELIGIBLE",
-      criteria_code: "INC-2026-LOW",
-      calculated_annual_income: 120000,
+      status: record.annualIncome < 500000 ? "ELIGIBLE" : "INELIGIBLE",
+      criteria_code: "INC-2026-AUTO",
+      calculated_annual_income: record.annualIncome,
     },
-    approved: isEligible,
+    approved: record.annualIncome < 500000,
   });
 });
 
 // 3. Department C: Employment / Skill Service
-// POST /mock/employment/verify
-// Schema: { candidate_id, name, skill_status }
-router.post("/employment/verify", (req: Request, res: Response) => {
-  console.log(`[Mock Dept C] Received employment verification request:`, req.body);
-  const { candidate_id, name } = req.body;
+router.post("/employment/verify", async (req: Request, res: Response) => {
+  const { candidate_id } = req.body;
+  if (!candidate_id) return res.status(400).json({ error: "candidate_id required" });
 
-  if (!candidate_id || !name) {
-    return res.status(400).json({
-      error: "Missing required fields in Employment System schema",
-      environment: DEMO_LABEL,
-    });
+  const record = await prisma.externalSkillRegistry.findUnique({
+    where: { citizenId: candidate_id }
+  });
+
+  if (!record) {
+    return res.json({ candidate_id, skill_verification_status: "not_found" });
   }
-
-  const verified = candidate_id === "MH12345" && name.toLowerCase() === "rahul sharma";
 
   return res.json({
     environment: DEMO_LABEL,
     candidate_id,
-    skill_verification_status: verified ? "verified" : "not_found",
-    certified_skills: ["Computer Literacy", "Customer Support Level 2"],
-    accreditation_body: "Maharashtra Skill Development Board",
+    skill_verification_status: "verified",
+    certified_skills: record.certifiedSkills,
+    accreditation_body: "Skill Registry HQ",
   });
 });
 

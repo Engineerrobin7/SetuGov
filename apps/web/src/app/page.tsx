@@ -82,19 +82,36 @@ export default function SetuGovPortal() {
   // Authentication & Role state
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+
+  // Login Form
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+
+  // Register Form
+  const [regForm, setRegisterForm] = useState({
+    email: "",
+    password: "",
+    confirmPassword: "",
+    name: "",
+    citizenId: "",
+    dob: "",
+    address: "",
+    contact: "",
+  });
+
   const [authError, setAuthError] = useState("");
 
   // Citizen application wizard states
   const [services, setServices] = useState<any[]>([]);
   const [selectedService, setSelectedService] = useState<any>(null);
   const [formInputs, setFormInputs] = useState({
-    name: "Rahul Sharma",
-    citizenId: "MH12345",
-    dob: "2002-05-14",
-    address: "Flat 402, Sector 15, Vashi, Navi Mumbai, Maharashtra - 400703",
-    contact: "9876543210",
+    name: "",
+    citizenId: "",
+    dob: "",
+    address: "",
+    contact: "",
   });
   const [uploadedDocs, setUploadedDocs] = useState<Array<{type: string, name: string}>>([]);
   const [applicationError, setApplicationError] = useState("");
@@ -129,6 +146,8 @@ export default function SetuGovPortal() {
     const savedToken = localStorage.getItem("setugov_token");
     if (savedToken) {
       setToken(savedToken);
+    } else {
+      setIsAuthLoading(false);
     }
   }, []);
 
@@ -141,23 +160,45 @@ export default function SetuGovPortal() {
       if (res.ok) {
         const userData = await res.json();
         setUser(userData);
-        // Switch tab based on role
-        if (userData.role === "CITIZEN") setActivePortalTab("citizen");
-        if (userData.role === "OFFICIAL") setActivePortalTab("official");
-        if (userData.role === "ADMIN") setActivePortalTab("admin");
+        // Switch tab based on role if current application is not being tracked
+        if (!currentApplication) {
+          if (userData.role === "CITIZEN") setActivePortalTab("citizen");
+          if (userData.role === "OFFICIAL") setActivePortalTab("official");
+          if (userData.role === "ADMIN") setActivePortalTab("admin");
+        }
       } else {
-        handleLogout();
+        // Only wipe token if it's actually invalid (401/403)
+        if (res.status === 401 || res.status === 403) {
+          console.error("Auth session expired or invalid");
+          localStorage.removeItem("setugov_token");
+          setToken(null);
+          setUser(null);
+        }
       }
     } catch {
-      handleLogout();
+      // Network error, don't necessarily logout
+    } finally {
+      setIsAuthLoading(false);
     }
-  }, []);
+  }, [currentApplication]);
 
   useEffect(() => {
     if (token) {
       fetchProfile(token);
     }
   }, [token, fetchProfile]);
+
+  useEffect(() => {
+    if (user?.role === "CITIZEN" && user?.profile) {
+      setFormInputs({
+        name: user.profile.name,
+        citizenId: user.profile.citizenId,
+        dob: new Date(user.profile.dob).toISOString().split('T')[0],
+        address: user.profile.address,
+        contact: user.profile.contact,
+      });
+    }
+  }, [user]);
 
   // Fetch citizen data
   const fetchCitizenData = useCallback(async () => {
@@ -324,9 +365,46 @@ export default function SetuGovPortal() {
 
       localStorage.setItem("setugov_token", data.token);
       setToken(data.token);
-      setUser(data.user);
+      // fetchProfile will be triggered by token change
     } catch (err) {
       setAuthError("Failed to connect to backend server");
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+
+    if (regForm.password !== regForm.confirmPassword) {
+      setAuthError("Passwords do not match");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: regForm.email,
+          password: regForm.password,
+          citizenId: regForm.citizenId,
+          name: regForm.name,
+          dob: regForm.dob,
+          address: regForm.address,
+          contact: regForm.contact,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.error || "Registration failed");
+        return;
+      }
+
+      localStorage.setItem("setugov_token", data.token);
+      setToken(data.token);
+    } catch (err) {
+      setAuthError("Network error during registration");
     }
   };
 
@@ -566,54 +644,54 @@ export default function SetuGovPortal() {
             {/* Logo area */}
             <div className="flex items-center space-x-4 cursor-pointer" onClick={() => setCitizenSubView("landing")}>
               {/* Symbolic seal icon */}
-              <div className="bg-gradient-to-tr from-sky-700 to-indigo-900 p-2.5 rounded-lg shadow-md text-white">
+              <div className="bg-gradient-to-tr from-sky-800 to-indigo-900 p-2.5 rounded-xl shadow-md text-white">
                 <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                 </svg>
               </div>
-              <div>
-                <h1 className="text-2xl font-black tracking-tight text-slate-900 flex items-center">
-                  <span>Setu</span>
-                  <span className="text-sky-700">Gov</span>
+              <div className="hidden sm:block">
+                <h1 className="text-xl font-black tracking-tight text-slate-900 flex items-center">
+                  <span>SETU</span>
+                  <span className="text-sky-700">GOV</span>
                 </h1>
-                <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500">Government Interoperability Platform</p>
+                <p className="text-[9px] uppercase font-black tracking-widest text-slate-400">Maharashtra Middleware Gateway</p>
               </div>
             </div>
 
             {/* Quick Access Switcher & Profiles */}
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-4">
               {token ? (
                 <>
-                  <div className="hidden md:flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                  <nav className="hidden lg:flex items-center space-x-1 bg-slate-100/50 p-1 rounded-xl border border-slate-200">
                     <button
                       onClick={() => setActivePortalTab("citizen")}
-                      className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                        activePortalTab === "citizen" ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-900"
+                      className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                        activePortalTab === "citizen" ? "bg-white shadow-sm text-sky-700" : "text-slate-500 hover:text-slate-900"
                       }`}
                     >
-                      Citizen View
+                      Citizen
                     </button>
                     {(user?.role === "OFFICIAL" || user?.role === "ADMIN") && (
                       <button
                         onClick={() => setActivePortalTab("official")}
-                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                          activePortalTab === "official" ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-900"
+                        className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                          activePortalTab === "official" ? "bg-white shadow-sm text-sky-700" : "text-slate-500 hover:text-slate-900"
                         }`}
                       >
-                        Official Panel
+                        Official
                       </button>
                     )}
                     {user?.role === "ADMIN" && (
                       <button
                         onClick={() => setActivePortalTab("admin")}
-                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                          activePortalTab === "admin" ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-900"
+                        className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                          activePortalTab === "admin" ? "bg-white shadow-sm text-sky-700" : "text-slate-500 hover:text-slate-900"
                         }`}
                       >
-                        Admin Controls
+                        Admin
                       </button>
                     )}
-                  </div>
+                  </nav>
 
                   <div className="flex items-center space-x-3 pl-3 border-l border-slate-200">
                     {/* Notification Bell */}
@@ -719,86 +797,246 @@ export default function SetuGovPortal() {
       {/* 3. Main Content Area */}
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
+        {/* Loading State */}
+        {isAuthLoading && !token && (
+          <div className="flex flex-col items-center justify-center py-32 space-y-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-700"></div>
+            <p className="text-slate-500 font-bold animate-pulse uppercase tracking-widest text-[10px]">Secure Gateway Handshake...</p>
+          </div>
+        )}
+
         {/* Unauthenticated View */}
-        {!token && (
-          <div className="max-w-md mx-auto my-12 bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
-            <div className="bg-gradient-to-tr from-sky-700 to-indigo-900 p-6 text-white text-center">
-              <h2 className="text-xl font-bold">Sign In to SetuGov Gateway</h2>
-              <p className="text-slate-200 text-xs mt-1">Access unified integration and tracking services</p>
-            </div>
+        {!token && !isAuthLoading && (
+          <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-12 items-center py-12">
             
-            <form onSubmit={handleLogin} className="p-6 space-y-4">
-              {authError && (
-                <div className="bg-red-50 text-red-800 text-xs p-3 rounded-lg border border-red-200 flex items-start space-x-2">
-                  <svg className="h-4 w-4 shrink-0 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span>{authError}</span>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email Address</label>
-                <input
-                  type="email"
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder="name@setugov.in"
-                  required
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password</label>
-                <input
-                  type="password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-sky-700 hover:bg-sky-800 text-white font-bold py-2 px-4 rounded-lg transition shadow-md"
-              >
-                Continue
-              </button>
-
-              <div className="relative my-6 text-center">
-                <hr className="border-slate-200" />
-                <span className="absolute bg-white px-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2">
-                  Demo Fast-Track
+            {/* Left Side: Brand & Mission */}
+            <div className="lg:col-span-3 space-y-8">
+              <div className="space-y-4">
+                <span className="bg-sky-100 text-sky-700 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full border border-sky-200">
+                  Government of Maharashtra Initiative
                 </span>
+                <h2 className="text-5xl font-black text-slate-900 leading-[1.1] tracking-tight">
+                  The Bridge Between <span className="text-sky-700 underline decoration-sky-300 underline-offset-8">Government</span> and <span className="text-indigo-700 underline decoration-indigo-300 underline-offset-8">Citizens</span>.
+                </h2>
+                <p className="text-lg text-slate-600 leading-relaxed max-w-xl">
+                  SetuGov is the unified interoperability layer that streamlines cross-departmental coordination. No more repeated uploads. No more fragmented status tracking. One portal for all your service needs.
+                </p>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin("citizen")}
-                  className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-2 rounded-lg text-[10px] font-extrabold tracking-wide uppercase transition"
-                >
-                  Citizen User
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin("official")}
-                  className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-2 rounded-lg text-[10px] font-extrabold tracking-wide uppercase transition"
-                >
-                  Official User
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin("admin")}
-                  className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-2 rounded-lg text-[10px] font-extrabold tracking-wide uppercase transition"
-                >
-                  Admin Operator
-                </button>
+              <div className="grid grid-cols-2 gap-6 pt-4">
+                <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-2">
+                  <div className="bg-sky-50 p-2 rounded-lg inline-block text-sky-600">
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                  <h4 className="font-bold text-slate-900">Unified Identity</h4>
+                  <p className="text-xs text-slate-500">Secure SSO integration across all ministry departments.</p>
+                </div>
+                <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-2">
+                  <div className="bg-emerald-50 p-2 rounded-lg inline-block text-emerald-600">
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h4 className="font-bold text-slate-900">Consent Led</h4>
+                  <p className="text-xs text-slate-500">You control who accesses your sensitive government records.</p>
+                </div>
               </div>
-            </form>
+            </div>
+
+            {/* Right Side: Auth Form */}
+            <div className="lg:col-span-2">
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-[0_20px_50px_rgba(0,0,0,0.05)] overflow-hidden">
+                <div className="flex border-b border-slate-100">
+                  <button
+                    onClick={() => setAuthMode("login")}
+                    className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${authMode === "login" ? 'text-sky-700 bg-white border-b-2 border-sky-600' : 'text-slate-400 bg-slate-50/50 hover:text-slate-600'}`}
+                  >
+                    Citizen Login
+                  </button>
+                  <button
+                    onClick={() => setAuthMode("register")}
+                    className={`flex-1 py-4 text-xs font-black uppercase tracking-widest transition-all ${authMode === "register" ? 'text-sky-700 bg-white border-b-2 border-sky-600' : 'text-slate-400 bg-slate-50/50 hover:text-slate-600'}`}
+                  >
+                    Register Profile
+                  </button>
+                </div>
+
+                <div className="p-8">
+                  {authError && (
+                    <div className="bg-red-50 text-red-800 text-xs p-4 rounded-xl border border-red-100 flex items-start space-x-3 mb-6 animate-shake">
+                      <svg className="h-4 w-4 shrink-0 text-red-500 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="font-semibold">{authError}</span>
+                    </div>
+                  )}
+
+                  {authMode === "login" ? (
+                    <form onSubmit={handleLogin} className="space-y-5">
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Email Address</label>
+                        <input
+                          type="email"
+                          value={loginEmail}
+                          onChange={(e) => setLoginEmail(e.target.value)}
+                          placeholder="name@govt.in"
+                          required
+                          className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:bg-white transition-all"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center px-1">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Password</label>
+                          <a href="#" className="text-[10px] font-bold text-sky-600 hover:text-sky-700 uppercase tracking-widest">Forgot?</a>
+                        </div>
+                        <input
+                          type="password"
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                          placeholder="••••••••"
+                          required
+                          className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:bg-white transition-all"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full bg-slate-900 hover:bg-black text-white font-black py-4 px-4 rounded-2xl transition-all shadow-lg hover:shadow-xl active:scale-[0.98] uppercase tracking-widest text-xs"
+                      >
+                        Authorize & Login
+                      </button>
+
+                      {/* QUICK LOGIN DEMO FAST-TRACK (Now inside the form) */}
+                      <div className="relative pt-6">
+                        <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                          <div className="w-full border-t border-slate-100"></div>
+                        </div>
+                        <div className="relative flex justify-center text-[9px] font-bold uppercase tracking-widest">
+                          <span className="bg-white px-2 text-slate-400">Demo Fast-Track</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 mt-2">
+                        <button type="button" onClick={() => handleQuickLogin("citizen")} className="bg-slate-50 hover:bg-slate-100 text-[9px] font-black text-slate-500 py-2 rounded-xl border border-slate-200 transition uppercase">Citizen</button>
+                        <button type="button" onClick={() => handleQuickLogin("official")} className="bg-slate-50 hover:bg-slate-100 text-[9px] font-black text-slate-500 py-2 rounded-xl border border-slate-200 transition uppercase">Official</button>
+                        <button type="button" onClick={() => handleQuickLogin("admin")} className="bg-slate-50 hover:bg-slate-100 text-[9px] font-black text-slate-500 py-2 rounded-xl border border-slate-200 transition uppercase">Admin</button>
+                      </div>
+                    </form>
+                  ) : (
+                    <form onSubmit={handleRegister} className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Full Name</label>
+                          <input
+                            type="text"
+                            value={regForm.name}
+                            placeholder="e.g. Rahul Sharma"
+                            onChange={(e) => setRegisterForm({...regForm, name: e.target.value})}
+                            required
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Citizen ID</label>
+                          <input
+                            type="text"
+                            value={regForm.citizenId}
+                            placeholder="MH12345"
+                            onChange={(e) => setRegisterForm({...regForm, citizenId: e.target.value})}
+                            required
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Date of Birth</label>
+                          <input
+                            type="date"
+                            value={regForm.dob}
+                            onChange={(e) => setRegisterForm({...regForm, dob: e.target.value})}
+                            required
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Contact</label>
+                          <input
+                            type="text"
+                            value={regForm.contact}
+                            placeholder="9876543210"
+                            onChange={(e) => setRegisterForm({...regForm, contact: e.target.value})}
+                            required
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Residential Address</label>
+                        <input
+                          type="text"
+                          value={regForm.address}
+                          placeholder="Flat 402, Sector 15..."
+                          onChange={(e) => setRegisterForm({...regForm, address: e.target.value})}
+                          required
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Email Address</label>
+                        <input
+                          type="email"
+                          value={regForm.email}
+                          placeholder="rahul@example.com"
+                          onChange={(e) => setRegisterForm({...regForm, email: e.target.value})}
+                          required
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Password</label>
+                          <input
+                            type="password"
+                            value={regForm.password}
+                            placeholder="••••••••"
+                            onChange={(e) => setRegisterForm({...regForm, password: e.target.value})}
+                            required
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Confirm</label>
+                          <input
+                            type="password"
+                            value={regForm.confirmPassword}
+                            placeholder="••••••••"
+                            onChange={(e) => setRegisterForm({...regForm, confirmPassword: e.target.value})}
+                            required
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 px-4 rounded-2xl transition-all shadow-lg uppercase tracking-widest text-xs"
+                      >
+                        Create Profile
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            </div>
+
           </div>
         )}
 
