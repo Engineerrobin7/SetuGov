@@ -1,0 +1,27 @@
+{
+  "name": "setugov",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "server",
+    "apps/web"
+  ],
+  "scripts": {
+    "install:all": "npm install",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:web\"",
+    "build:server": "npm run build --workspace=server",
+    "build:web": "npm run build --workspace=apps/web",
+    "build": "npm run build:server && npm run build:web",
+    "start:server": "npm run start --workspace=server",
+    "start:web": "npm run start --workspace=apps/web",
+    "start": "concurrently \"npm run start:server\" \"npm run start:web\"",
+    "test": "npm run test --workspace=server",
+    "lint": "npm run lint --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

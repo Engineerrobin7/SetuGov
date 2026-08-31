@@ -1,0 +1,232 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  role      String   // "CITIZEN", "OFFICIAL", "ADMIN"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  citizen   Citizen?
+  official  Official?
+}
+
+model Citizen {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  citizenId     String   @unique // e.g. "MH12345"
+  name          String
+  dob           DateTime
+  address       String
+  contact       String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  applications  Application[]
+  notifications Notification[]
+}
+
+model Official {
+  id         String   @id @default(uuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  code        String   @unique // e.g., "DEPT_A"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  officials   Official[]
+  connectors  Connector[]
+  slaRecords  SLARecord[]
+}
+
+model Connector {
+  id           String   @id @default(uuid())
+  name         String
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  type         String   // "REST_JSON", "REST_XML", "SOAP", "LEGACY"
+  baseUrl      String
+  config       Json?    // Specific adapter configurations
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workflowSteps WorkflowTemplateStep[]
+}
+
+model Service {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  applications Application[]
+  templates    WorkflowTemplate[]
+}
+
+model WorkflowTemplate {
+  id        String   @id @default(uuid())
+  name      String
+  serviceId String
+  service   Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  version   Int      @default(1)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  steps     WorkflowTemplateStep[]
+  instances WorkflowInstance[]
+}
+
+model WorkflowTemplateStep {
+  id                 String           @id @default(uuid())
+  templateId         String
+  template           WorkflowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  connectorId        String
+  connector          Connector        @relation(fields: [connectorId], references: [id])
+  stepName           String
+  order              Int
+  isMandatory        Boolean          @default(true)
+  slaMinutes         Int              @default(60)
+  requiresManualApproval Boolean      @default(false)
+
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}
+
+model Application {
+  id            String   @id @default(uuid())
+  requestId     String   @unique // SG-2026-000123
+  citizenId     String
+  citizen       Citizen  @relation(fields: [citizenId], references: [id], onDelete: Cascade)
+  serviceId     String
+  service       Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  status        String   // "CREATED", "VALIDATING", "CONSENT_PENDING", "READY", "IN_PROGRESS", "WAITING", "RETRYING", "FAILED", "EXCEPTION", "COMPLETED"
+  canonicalData Json     // Holds current form state and gathered verification outputs
+  currentStep   String   // "IDENTITY_VERIFICATION", "ELIGIBILITY_VERIFICATION", "EMPLOYMENT_VERIFICATION", "SERVICE_PROCESSING", "COMPLETED"
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  consent       Consent?
+  workflow      WorkflowInstance?
+  slaRecords    SLARecord[]
+  documents     Document[]
+}
+
+model Document {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  type          String      // "ID_PROOF", "INCOME_CERT", "SKILL_CERT"
+  fileName      String
+  fileUrl       String
+  fileSize      Int
+  mimeType      String
+  status        String      @default("PENDING") // "PENDING", "VERIFIED", "REJECTED"
+  verifiedAt    DateTime?
+  createdAt     DateTime    @default(now())
+}
+
+model Consent {
+  id            String      @id @default(uuid())
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  status        String      // "GRANTED", "REVOKED"
+  purpose       String
+  timestamp     DateTime    @default(now())
+  version       String
+  ipAddress     String
+}
+
+model WorkflowInstance {
+  id            String         @id @default(uuid())
+  applicationId String         @unique
+  application   Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  templateId    String?
+  template      WorkflowTemplate? @relation(fields: [templateId], references: [id])
+  status        String         // "PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  steps         WorkflowStep[]
+}
+
+model SLARecord {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  departmentId  String
+  department    Department  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  stepName      String
+  startTime     DateTime    @default(now())
+  endTime       DateTime?
+  expectedEndTime DateTime
+  status        String      // "IN_PROGRESS", "COMPLETED", "BREACHED"
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model WorkflowStep {
+  id                 String           @id @default(uuid())
+  workflowInstanceId String
+  workflowInstance   WorkflowInstance @relation(fields: [workflowInstanceId], references: [id], onDelete: Cascade)
+  stepName           String           // "IDENTITY_VERIFICATION", "ELIGIBILITY_VERIFICATION", "EMPLOYMENT_VERIFICATION", "SERVICE_PROCESSING"
+  status             String           // "PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "WAITING", "RETRYING", "SKIPPED", "PENDING_APPROVAL"
+  retries            Int              @default(0)
+  errorMessage       String?
+  responsePayload    Json?
+  approvedBy         String?
+  approvalTimestamp  DateTime?
+  updatedAt          DateTime         @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actor      String
+  role       String
+  action     String
+  timestamp  DateTime @default(now())
+  requestId  String?
+  department String?
+  prevStatus String?
+  newStatus  String?
+  result     String?
+  metadata   Json?
+}
+
+model SystemEvent {
+  id        String   @id @default(uuid())
+  eventType String
+  timestamp DateTime @default(now())
+  payload   Json
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  citizenId String
+  citizen   Citizen  @relation(fields: [citizenId], references: [id], onDelete: Cascade)
+  message   String
+  read      Boolean  @default(false)
+  timestamp DateTime @default(now())
+}
