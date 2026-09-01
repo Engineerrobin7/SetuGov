@@ -1,12 +1,14 @@
 import { Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import { createClerkClient } from "@clerk/backend";
 import { Request } from "express";
+import prisma from "../config/db";
 
-const JWT_SECRET = process.env.JWT_SECRET || "setugov-super-secret-key-sih-2026-mvp";
+const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY });
 
 export interface AuthenticatedRequest extends Request {
   user?: {
-    id: string;
+    id: string; // Database User ID
+    clerkId: string;
     email: string;
     role: string;
     citizenProfileId?: string;
@@ -14,7 +16,7 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-export function authenticateJWT(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function authenticateJWT(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -24,16 +26,54 @@ export function authenticateJWT(req: AuthenticatedRequest, res: Response, next: 
   const token = authHeader.split(" ")[1];
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as {
-      id: string;
-      email: string;
-      role: string;
-      citizenProfileId?: string;
-      officialProfileId?: string;
+    // Verify the session token with Clerk
+    const session = await clerkClient.verifyToken(token);
+
+    if (!session) {
+      return res.status(403).json({ error: "Invalid session" });
+    }
+
+    const clerkId = session.sub;
+
+    // Find or create user in our local database
+    let user = await prisma.user.findUnique({
+      where: { clerkId },
+      include: {
+        citizen: true,
+        official: true,
+      },
+    });
+
+    if (!user) {
+      // Get full user details from Clerk if not in our DB
+      const clerkUser = await clerkClient.users.getUser(clerkId);
+      const email = clerkUser.emailAddresses[0]?.emailAddress || "";
+
+      user = await prisma.user.create({
+        data: {
+          clerkId,
+          email,
+          role: "CITIZEN", // Default role
+        },
+        include: {
+          citizen: true,
+          official: true,
+        }
+      });
+    }
+
+    req.user = {
+      id: user.id,
+      clerkId: user.clerkId,
+      email: user.email,
+      role: user.role,
+      citizenProfileId: user.citizen?.id,
+      officialProfileId: user.official?.id,
     };
-    req.user = decoded;
+
     return next();
   } catch (error) {
+    console.error("Auth Error:", error);
     return res.status(403).json({ error: "Invalid or expired token" });
   }
 }

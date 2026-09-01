@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/backend": "^3.16.13",
     "@prisma/client": "^5.12.1",
     "@types/crypto-js": "^4.2.2",
     "@types/multer": "^2.2.0",
