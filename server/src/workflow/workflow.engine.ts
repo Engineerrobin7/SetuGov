@@ -1,6 +1,7 @@
 import prisma from "../config/db";
 import eventBus from "../events/event.bus";
 import { getConnectorForStep } from "../connectors/connector.registry";
+import { AIService } from "../services/ai.service";
 
 // Initialize workflow for an application
 export async function initializeWorkflow(applicationId: string) {
@@ -101,6 +102,38 @@ export async function runWorkflow(applicationId: string) {
     where: { id: workflowInstance.id },
     data: { status: "IN_PROGRESS" },
   });
+
+  // NEW: AI COGNITIVE PRE-CHECK
+  // Scan documents before calling external APIs to ensure data integrity
+  const documents = await prisma.document.findMany({ where: { applicationId } });
+  if (documents.length > 0) {
+    console.log(`[WorkflowEngine] Triggering AI Cognitive Scan for ${documents.length} documents...`);
+    for (const doc of documents) {
+      const aiResult = await AIService.verifyDocumentContent(doc.fileName, application.canonicalData);
+
+      await prisma.document.update({
+        where: { id: doc.id },
+        data: {
+          status: aiResult.match ? "VERIFIED" : "REJECTED",
+          verifiedAt: new Date(),
+        }
+      });
+
+      eventBus.emitEvent("AI_SCAN_COMPLETED", {
+        applicationId,
+        documentType: doc.type,
+        confidence: aiResult.confidenceScore,
+        match: aiResult.match,
+        issues: aiResult.detectedIssues
+      });
+
+      if (!aiResult.match) {
+        console.error(`[WorkflowEngine] AI flagged document mismatch for ${doc.type}`);
+        // For demo purposes, we log the issue but continue if the user wants.
+        // In a real system, we might halt the workflow here.
+      }
+    }
+  }
 
   let accumulatedData = (application.canonicalData as Record<string, any>) || {};
 

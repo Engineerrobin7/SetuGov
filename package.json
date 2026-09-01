@@ -23,5 +23,8 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "^7.8.3"
   }
 }

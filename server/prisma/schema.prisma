@@ -227,17 +227,19 @@ model WorkflowStep {
 }
 
 model AuditLog {
-  id         String   @id @default(uuid())
-  actor      String
-  role       String
-  action     String
-  timestamp  DateTime @default(now())
-  requestId  String?
-  department String?
-  prevStatus String?
-  newStatus  String?
-  result     String?
-  metadata   Json?
+  id           String   @id @default(uuid())
+  actor        String
+  role         String
+  action       String
+  timestamp    DateTime @default(now())
+  requestId    String?
+  department   String?
+  prevStatus   String?
+  newStatus    String?
+  result       String?
+  metadata     Json?
+  integrityHash String? @unique // SHA-256 integrity signature
+  previousHash String?         // Link to previous block (Blockchain logic)
 }
 
 model SystemEvent {

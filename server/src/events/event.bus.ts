@@ -1,5 +1,6 @@
 import { EventEmitter } from "events";
 import prisma from "../config/db";
+import CryptoJS from "crypto-js";
 
 class SetuGovEventBus extends EventEmitter {
   constructor() {
@@ -54,7 +55,17 @@ class SetuGovEventBus extends EventEmitter {
         } else if (eventType === "WORKFLOW_FAILED") {
           result = "FAILED";
           detail = `Workflow failed on step: ${payload.failedStep}`;
+        } else if (eventType === "AI_SCAN_COMPLETED") {
+          detail = `Cognitive Audit: ${payload.documentType} scan ${payload.match ? "PASSED" : "FLAGGED"}. Confidence: ${payload.confidence * 100}%`;
+          result = payload.match ? "SUCCESS" : "WARNING";
         }
+
+        // 4. SECURE AUDIT: Calculate Integrity Hash (Immutable Log logic)
+        const lastLog = await prisma.auditLog.findFirst({ orderBy: { timestamp: "desc" } });
+        const previousHash = lastLog?.integrityHash || "GENESIS_BLOCK";
+
+        const logContent = `${actor}${action}${requestId}${result}${JSON.stringify(payload)}${previousHash}`;
+        const integrityHash = CryptoJS.SHA256(logContent).toString();
 
         // Create the AuditLog
         await prisma.auditLog.create({
@@ -67,6 +78,8 @@ class SetuGovEventBus extends EventEmitter {
             prevStatus,
             newStatus,
             result,
+            integrityHash,
+            previousHash,
             metadata: { detail, ...payload },
           },
         });

@@ -1,11 +1,29 @@
 import { Router, Response } from "express";
 import { z } from "zod";
+import multer from "multer";
+import path from "path";
 import prisma from "../config/db";
 import { authenticateJWT, requireRole, AuthenticatedRequest } from "../auth/auth.middleware";
 import eventBus from "../events/event.bus";
 import { initializeWorkflow, runWorkflow } from "../workflow/workflow.engine";
 
 const router = Router();
+
+// Configure Multer for Real Storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+});
 
 // Apply authentication to all application routes
 router.use(authenticateJWT);
@@ -29,6 +47,27 @@ const submitConsentSchema = z.object({
   status: z.enum(["GRANTED", "REVOKED"]),
   purpose: z.string(),
   version: z.string(),
+});
+
+// POST /api/applications/upload (Real File Upload)
+router.post("/upload", upload.single("file"), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // Return the relative path and metadata
+    return res.json({
+      fileName: req.file.filename,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      url: `/uploads/${req.file.filename}`,
+    });
+  } catch (error) {
+    console.error("Upload error:", error);
+    return res.status(500).json({ error: "Upload processing failed" });
+  }
 });
 
 // POST /api/applications (Citizen only)
